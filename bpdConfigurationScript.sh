@@ -1,6 +1,5 @@
 #!/bin/bash
-
-ERROR_THROWN=false
+INIT=true
 
 # Function to display help message
 display_help() {
@@ -58,36 +57,48 @@ convert_pin() {
     esac
 }
 
-# Function to clear all user-provided parameters (except for SSID, password, and IP address)
-clear_parameters() {
-    unset servoPin
-    unset turningDegrees
-    unset pressTime
+# Function to collect the WLAN SSID
+collect_ssid() {
+    while true; do
+        ssid=$(whiptail --inputbox "Enter WLAN SSID" 8 39 "${ssid:-}" --title "WLAN SSID" 3>&1 1>&2 2>&3)
+        if [ $? -ne 0 ]; then exit 1; fi
+        if [ -z "$ssid" ]; then
+            whiptail --msgbox "WLAN SSID cannot be empty" 8 39 --title "Error"
+        else
+            break
+        fi
+    done
 }
 
-# Function to collect parameters through dialogs
-collect_parameters() {
-    ssid=$(whiptail --inputbox "Enter WLAN SSID" 8 39 "${ssid:-}" --title "WLAN SSID" 3>&1 1>&2 2>&3)
-    if [ $? -ne 0 ]; then exit 1; fi
-    if [ -z "$ssid" ]; then
-        whiptail --msgbox "WLAN SSID cannot be empty" 8 39 --title "Error"
-        collect_parameters
-    fi
+# Function to collect the WLAN password
+collect_password() {
+    while true; do
+        password=$(whiptail --passwordbox "Enter WLAN Password" 8 39 "${password:-}" --title "WLAN Password" 3>&1 1>&2 2>&3)
+        if [ $? -ne 0 ]; then exit 1; fi
+        if [ -z "$password" ]; then
+            whiptail --msgbox "WLAN Password cannot be empty" 8 39 --title "Error"
+        else
+            break
+        fi
+    done
 
-    password=$(whiptail --passwordbox "Enter WLAN Password" 8 39 "${password:-}" --title "WLAN Password" 3>&1 1>&2 2>&3)
-    if [ $? -ne 0 ]; then exit 1; fi
-    if [ -z "$password" ]; then
-        whiptail --msgbox "WLAN Password cannot be empty" 8 39 --title "Error"
-        collect_parameters
-    fi
+}
 
-    local_IP=$(whiptail --inputbox "Enter Device IP Address" 8 39 "${local_IP:-}" --title "Device IP" 3>&1 1>&2 2>&3)
-    if [ $? -ne 0 ]; then exit 1; fi
-    if ! validate_ip "$local_IP"; then
-        whiptail --msgbox "Invalid IP address format" 8 39 --title "Error"
-        collect_parameters
-    fi
+# Function to collect and validate the device IP
+collect_ip() {
+    while true; do
+        local_IP=$(whiptail --inputbox "Enter Device IP Address" 8 39 "${local_IP:-}" --title "Device IP" 3>&1 1>&2 2>&3)
+        if [ $? -ne 0 ]; then exit 1; fi
+        if ! validate_ip "$local_IP"; then
+            whiptail --msgbox "Invalid IP address format" 8 39 --title "Error"
+        else
+            break
+        fi
+    done
+}
 
+# Function to collect and validate the servo pin
+collect_servo_pin() {
     while true; do
         servoPin=$(whiptail --inputbox "Enter Servo PIN (D0, D1, D2, D3, D4, D5, D6, D7, D8)" 8 39 "${servoPin:-D1}" --title "Servo PIN" 3>&1 1>&2 2>&3)
         if [ $? -ne 0 ]; then exit 1; fi
@@ -97,20 +108,147 @@ collect_parameters() {
             whiptail --msgbox "Invalid Servo PIN: $servoPin. Must be one of D0, D1, D2, D3, D4, D5, D6, D7, D8." 10 60 --title "Error"
         fi
     done
+}
 
-    turningDegrees=$(whiptail --inputbox "Enter Turning Degrees (10-90, default:33)" 8 39 "${turningDegrees:-33}" --title "Turning Degrees" 3>&1 1>&2 2>&3)
-    if [ $? -ne 0 ]; then exit 1; fi
-    if [[ ! "$turningDegrees" =~ ^[0-9]+$ ]] || [ "$turningDegrees" -lt 10 ] || [ "$turningDegrees" -gt 90 ]; then
-        whiptail --msgbox "Turning Degrees must be a number between 10 and 90" 8 39 --title "Error"
-        collect_parameters
+# Function to collect and validate the turning degrees
+collect_turning_degrees() {
+    while true; do
+        turningDegrees=$(whiptail --inputbox "Enter Turning Degrees (10-90, default:33)" 8 39 "${turningDegrees:-33}" --title "Turning Degrees" 3>&1 1>&2 2>&3)
+        if [ $? -ne 0 ]; then exit 1; fi
+        if [[ ! "$turningDegrees" =~ ^[0-9]+$ ]] || [ "$turningDegrees" -lt 10 ] || [ "$turningDegrees" -gt 90 ]; then
+            whiptail --msgbox "Turning Degrees must be a number between 10 and 90" 8 39 --title "Error"
+        else
+            break
+        fi
+    done
+}
+
+# Function to collect and validate the press duration
+collect_press_duration() {
+    while true; do
+        pressTime=$(whiptail --inputbox "Enter Press Duration in milliseconds (default:400ms)" 8 39 "${pressTime:-400}" --title "Press Time" 3>&1 1>&2 2>&3)
+        if [ $? -ne 0 ]; then exit 1; fi
+        if [[ ! "$pressTime" =~ ^[0-9]+$ ]] || [ "$pressTime" -lt 100 ]; then
+            whiptail --msgbox "Press Time must be a number greater than 100ms" 8 39 --title "Error"
+        else
+            break
+        fi
+    done
+}
+
+# Function to collect all parameters (each with its own validation)
+collect_parameters() {
+    collect_ssid
+    collect_password
+    collect_ip
+    collect_servo_pin
+    collect_turning_degrees
+    collect_press_duration
+}
+
+collect_parameters_init() {
+    if [ -z "$ssid" ]; then
+        collect_ssid
     fi
 
-    pressTime=$(whiptail --inputbox "Enter Press Duration in milliseconds (default:400ms)" 8 39 "${pressTime:-400}" --title "Press Time" 3>&1 1>&2 2>&3)
-    if [ $? -ne 0 ]; then exit 1; fi
-    if [[ ! "$pressTime" =~ ^[0-9]+$ ]] || [ "$pressTime" -lt 100 ]; then
-        whiptail --msgbox "Press Time must be a number greater than 100ms" 8 39 --title "Error"
-        collect_parameters
+    if [ -z "$password" ]; then
+        collect_password
     fi
+
+    if [ -z "$local_IP" ]; then
+        collect_ip
+    fi
+
+    if [ -z "$servoPin" ]; then
+        collect_servo_pin
+    fi
+
+    if [ -z "$turningDegrees" ]; then
+        collect_turning_degrees
+    fi
+
+    if [ -z "$pressTime" ]; then
+        collect_press_duration
+    fi
+}
+
+# Parse command-line arguments and validate them
+while [ "$1" != "" ]; do
+    case $1 in
+    --ssid)
+        shift
+        ssid="$1"
+        ;;
+    --password)
+        shift
+        password="$1"
+        ;;
+    --ip)
+        shift
+        local_IP="$1"
+        if ! validate_ip "$local_IP"; then
+            echo "Invalid IP address format: $local_IP"
+            exit 1
+        fi
+        ;;
+    --pin)
+        shift
+        servoPin="$1"
+        if ! validate_pin "$servoPin"; then
+            echo "Invalid Servo PIN: $servoPin. Must be one of D0, D1, D2, D3, D4, D5, D6, D7, D8."
+            exit 1
+        fi
+        ;;
+    --degrees)
+        shift
+        turningDegrees="$1"
+        if [[ ! "$turningDegrees" =~ ^[0-9]+$ ]] || [ "$turningDegrees" -lt 10 ] || [ "$turningDegrees" -gt 90 ]; then
+            echo "Turning Degrees must be a number between 10 and 90"
+            exit 1
+        fi
+        ;;
+    --duration)
+        shift
+        pressTime="$1"
+        if [[ ! "$pressTime" =~ ^[0-9]+$ ]] || [ "$pressTime" -lt 100 ]; then
+            echo "Press Time must be a number greater than 100ms"
+            exit 1
+        fi
+        ;;
+    --help)
+        display_help
+        ;;
+    *)
+        echo "Unknown option: $1"
+        display_help
+        ;;
+    esac
+    shift
+done
+
+detect_serial_port() {
+    echo "SERIAL PORT DETECTION - Detecting serial port..."
+    port=$(arduino-cli board list | grep "tty" | awk '{print $1}')
+    if [ -z "$port" ]; then
+        whiptail --msgbox "No serial port found. Check the USB connection and make sure the serial port is not busy or invisible." 10 60 --title "Serial Port Error"
+        choice=$(whiptail --title "What would you like to do?" --menu "Choose an option:" 15 60 3 --nocancel \
+            "1" "Try again to detect serial port" \
+            "2" "Start over installation" \
+            "3" "Cancel and exit" 3>&1 1>&2 2>&3)
+
+        case $choice in
+        1)
+            detect_serial_port
+            ;;
+        2)
+            main
+            ;;
+        3)
+            exit 1
+            ;;
+        esac
+    fi
+    echo "SERIAL PORT DETECTION - Serial port detected: $port"
 }
 
 # Function to install required libraries
@@ -129,7 +267,7 @@ install_libraries() {
                 exit 1
             fi
         else
-            echo "Library $lib is already installed."
+            echo "LIBRARY INSTALLATION - Library $lib is already installed."
         fi
     done
 
@@ -138,9 +276,6 @@ install_libraries() {
 
 # Function to generate the ESP8266 code with the provided parameters
 generate_code() {
-
-    echo "BOARD CODE GENERATION - Starting board code generation..."
-
     local ssid="$1"
     local password="$2"
     local local_IP="$3"
@@ -363,7 +498,7 @@ record_serial_output() {
     while [ $SECONDS -lt $END ]; do
         cat <&3 >>"$output_file"
         if [ $? -ne 0 ]; then
-            echo "Error reading from serial port. Serial port may have been disconnected."
+            echo "RECORDING SERIAL PORT - Error reading from serial port. Serial port may have been disconnected."
             return 1
         fi
     done
@@ -422,8 +557,6 @@ test_device() {
 handle_restart_option() {
     local message="$1"
     if (whiptail --title "Restart Installation" --yesno "$message" 12 60); then
-        ERROR_THROWN=true
-        clear_parameters # Reset all parameters (except ssid, password, and local_IP)
         main
     else
         exit 1
@@ -431,48 +564,74 @@ handle_restart_option() {
 }
 
 # Function to repeat the test only if the user chooses
-repeat_motor_test() {
+test_motor() {
     local ip="$1"
-    while true; do
+    local retry=true  # Variabile per gestire la ripetizione del test
+
+    while $retry; do
         whiptail --msgbox "Look at the motor. Testing motor functionality now..." 8 39 --title "Motor Test"
+        
         if test_device "$ip"; then
             if (whiptail --title "Motor Movement" --yesno "Did the motor move?" 8 39); then
                 echo "DEVICE TESTING - Motor movement confirmed by user."
-                break
+                retry=false  # Test riuscito, non ripetere più il ciclo
             else
-                if (whiptail --title "Retry" --yesno "Check the cable connections. Do you want to try again?" 10 60); then
-                    echo "Retrying motor test..."
-                else
-                    echo "Exiting test."
-                    exit 1
-                fi
+                whiptail --title "Retry" --msgbox "Check the cable connections and configuration." 10 60
+                choice=$(whiptail --title "What would you like to do?" --menu "Choose an option:" 15 60 3 \
+                    "1" "Try again to test the motor" \
+                    "2" "Start over installation" \
+                    "3" "Cancel and exit" 3>&1 1>&2 2>&3)
+
+                case $choice in
+                1)
+                    retry=true  # Ripetere il test
+                    ;;
+                2)
+                    main  # Ripartire dall'inizio dell'installazione
+                    ;;
+                3)
+                    exit 1  # Terminare lo script
+                    ;;
+                esac
             fi
         else
             echo "DEVICE TESTING - Motor test failed."
-            handle_restart_option "Motor test failed. Do you want to restart the installation?"
+
+            whiptail --title "Retry" --msgbox "It was not possible to contact the device to test it." 10 60
+            choice=$(whiptail --title "What would you like to do?" --menu "Choose an option:" 15 60 3 \
+                "1" "Try again to test the device" \
+                "2" "Start over installation" \
+                "3" "Cancel and exit" 3>&1 1>&2 2>&3)
+
+            case $choice in
+            1)
+                retry=true  # Ripetere il test
+                ;;
+            2)
+                main  # Ripartire dall'inizio dell'installazione
+                ;;
+            3)
+                exit 1  # Terminare lo script
+                ;;
+            esac
         fi
     done
 }
 
+
 # Main function to execute the configuration
 main() {
-    ERROR_THROWN=false
-
     echo "PARAMETERS COLLECTION - Collecting parameters..."
-    collect_parameters
-
-    echo "SERIAL PORT DETECTION - Detecting serial port..."
-    port=$(arduino-cli board list | grep "tty" | awk '{print $1}')
-    if [ -z "$port" ]; then
-        whiptail --msgbox "No serial port found. Check the USB connection and make sure the serial port is not busy or invisible." 10 60 --title "Serial Port Error"
-        handle_restart_option "Do you want to start over with the installation?"
+    if [ "$INIT" = true ]; then
+        collect_parameters_init
+        INIT=false
+    else
+        collect_parameters
     fi
-    echo "SERIAL PORT DETECTION - Serial port detected: $port"
 
+    detect_serial_port
     install_libraries
-
     generate_code "$ssid" "$password" "$local_IP" "$servoPin" "$turningDegrees" "$pressTime"
-
     upload_code "$port"
 
     serial_output_file="serial_output.txt"
@@ -480,30 +639,110 @@ main() {
     rm -rf "$serial_output_file"
     record_serial_output "$port" "$serial_output_file"
     if [ $? -ne 0 ]; then
-        handle_restart_option "The serial port was disconnected. Please check the connection and restart the installation."
+        choice=$(whiptail --title "Serial Port Disconnected" --menu "The serial port was disconnected. What would you like to do?" 15 60 3 --nocancel \
+            "1" "Restart from firmware compilation and upload" \
+            "2" "Start over installation" \
+            "3" "Cancel and exit" 3>&1 1>&2 2>&3)
+
+        case $choice in
+        1)
+            
+            detect_serial_port
+            ;;
+        2)
+            main
+            ;;
+        3)
+            exit 1
+            ;;
+        esac
     fi
     echo "SERIAL PORT MONITORING - Serial port monitoring completed."
 
     check_serial_output "$serial_output_file"
     result=$?
     if [ "$result" -eq 1 ]; then
-        whiptail --msgbox "No error messages found in the serial output" 8 39 --title "Success"
+        echo "SERIAL PORT CHECKING - Serial port output error."
+        whiptail --msgbox "Serial port output error." 8 39 --title "Serial Port Error"
+        choice=$(whiptail --title "What would you like to do?" --menu "Choose an option:" 15 60 3 --nocancel \
+            "1" "Try again to reupload the firmware" \
+            "2" "Start over installation" \
+            "3" "Cancel and exit" 3>&1 1>&2 2>&3)
+        case $choice in
+        1)
+            
+            upload_code
+            ;;
+        2)
+            main
+            ;;
+        3)
+            exit 1
+            ;;
+        esac
     elif [ "$result" -eq 2 ]; then
+        echo "SERIAL PORT CHECKING - Device network error: STA Failed to configure. Check network settings."
         handle_restart_option "Device network error: STA Failed to configure. Check network settings. Do you want to restart the installation?"
     elif [ "$result" -eq 3 ]; then
+        echo "SERIAL PORT CHECKING - Device network error: failed to connect to WiFi. Check network settings."
         handle_restart_option "Device network error: failed to connect to WiFi. Check network settings. Do you want to restart the installation?"
     elif [ "$result" -eq 4 ]; then
-        handle_restart_option "No output was read from the serial port. There may be an issue with the connection. Do you want to restart the installation?"
+        whiptail --msgbox "No output was read from the serial port. There may be an issue with the connection." 8 39 --title "Serial Port Error"
+        choice=$(whiptail --title "What would you like to do?" --menu "Choose an option:" 15 60 3 --nocancel \
+            "1" "Try again to reupload the firmware" \
+            "2" "Start over installation" \
+            "3" "Cancel and exit" 3>&1 1>&2 2>&3)
+        case $choice in
+        1)
+            
+            upload_code
+            ;;
+        2)
+            main
+            ;;
+        3)
+            exit 1
+            ;;
+        esac
     elif [ "$result" -eq 0 ]; then
         echo "DEVICE TESTING - Testing device functionality over WiFi..."
-
         if check_device "$local_IP"; then
-            repeat_motor_test "$local_IP"
+            test_motor "$local_IP"
         else
-            handle_restart_option "Device network error: Unable to contact the device over WiFi. Check network settings. Do you want to restart the installation?"
+            whiptail --msgbox "Device network error: Unable to contact the device over WiFi. Check network settings and WiFi status." 8 39 --title "Network Error"
+            choice=$(whiptail --title "What would you like to do?" --menu "Choose an option:" 15 60 3 --nocancel \
+                "1" "Try again to contact the device" \
+                "2" "Start over installation" \
+                "3" "Cancel and exit" 3>&1 1>&2 2>&3)
+            case $choice in
+            1)
+                check_device
+                ;;
+            2)
+                main
+                ;;
+            3)
+                exit 1
+                ;;
+            esac
         fi
     else
-        handle_restart_option "It was not possible to get the board status. Do you want to restart the installation?"
+        whiptail --msgbox "It was not possible to get the board status." 8 39 --title "Device status not available"
+        choice=$(whiptail --title "What would you like to do?" --menu "Choose an option:" 15 60 3 --nocancel \
+            "1" "Try again to reupload the firmware" \
+            "2" "Start over installation" \
+            "3" "Cancel and exit" 3>&1 1>&2 2>&3)
+        case $choice in
+        1)
+            upload_code
+            ;;
+        2)
+            main
+            ;;
+        3)
+            exit 1
+            ;;
+        esac
     fi
 }
 
